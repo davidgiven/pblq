@@ -5,6 +5,9 @@
 #include <errno.h>
 #include "globals.h"
 #include "Packet.h"
+#include <algorithm>
+
+using std::min;
 
 /* --- Write RAM --------------------------------------------------------- */
 
@@ -14,10 +17,16 @@ void exec_write(const char* filename, uint32_t start)
 	if (!fp)
 		error("Could not open output file: %s", strerror(errno));
 
+	fseek(fp, 0, SEEK_END);
+	uint32_t length = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
+
+	printf("Writing '%s' to RAM at address 0x%08X:\n", filename, start);
+
 	resettimer();
 	Packet p;
 	p.request = PACKET_WRITE;
-	
+
 	uint32_t count = 0;
 	for (;;)
 	{
@@ -34,11 +43,12 @@ void exec_write(const char* filename, uint32_t start)
 
 		count += i;
 
-		printf("\r%d bytes (%d Bps)",
-			count, (count*1000) / gettime());
+		printf("\r%03d%% complete: %d bytes (%d Bps)",
+				(100*count) / length,
+				count, (count*1000) / gettime());
 		fflush(stdout);
 	}
-	putchar('\n');
+	printf("\r100\n");
 
 	fclose(fp);
 };
@@ -64,10 +74,29 @@ void exec_writeflash(const char* filename, uint32_t start)
 {
 	FILE* fp = fopen(filename, "rb");
 	if (!fp)
-		error("Could not open output file: %s", strerror(errno));
+		error("Could not open input file: %s", strerror(errno));
+
+	fseek(fp, 0, SEEK_END);
+	uint32_t length = ftell(fp);
+	fseek(fp, 0, SEEK_SET);
 
 	Packet p;
-	
+
+	uint32_t lengthalign = (length + 0xFFFF) & ~0xFFFF;
+	printf("Erasing flash area 0x%08X+0x%08X:\n", start, lengthalign);
+
+	resettimer();
+	p.request = PACKET_ERASEFLASH;
+	p.length = 10;
+	p.setq(0, start);
+	p.setq(4, lengthalign);
+	p.sets(8, 1);
+	p.write();
+	p.read();
+	p.checkresponse(0x0086);
+
+	printf("Writing '%s' to flash at offset 0x%08X:\n", filename, start);
+
 	resettimer();
 	uint32_t count = 0;
 	byte buffer[8192];
@@ -78,19 +107,10 @@ void exec_writeflash(const char* filename, uint32_t start)
 			break;
 		memset(buffer+blocklen, 0, 8192-blocklen);
 
-		p.request = PACKET_ERASEFLASH;
-		p.length = 10;
-		p.setq(0, start+count);
-		p.setq(4, 1);
-		p.sets(8, 1);
-		p.write();
-		p.read();
-		p.checkresponse(0x0086);
-
 		int i = 0;
 		for (;;)
 		{
-			int packetsize = (MaximumPacketSize-16) <? (8192-i);
+			int packetsize = min(MaximumPacketSize-16, 8192-i);
 			if (packetsize <= 0)
 				break;
 
@@ -106,14 +126,15 @@ void exec_writeflash(const char* filename, uint32_t start)
 
 			i += packetsize;
 
-			printf("\r%d bytes (%d Bps)",
-				count+i, ((count+i)*1000) / gettime());
+			printf("\r%03d%% complete: %d bytes (%d Bps)",
+					(100*count) / length,
+					count+i, ((count+i)*1000) / gettime());
 			fflush(stdout);
 		}
 
 		count += blocklen;
 	}
-	putchar('\n');
+	printf("\r100\n");
 
 	fclose(fp);
 };
@@ -127,7 +148,7 @@ void cmd_writeflash(char** argv)
 		error("syntax error: write <filename> <start>");
 
 	int64_t s = strtoll(start, NULL, 0);
-	if ((s < 0) || (s > 0xFFFFFFFF))
+	if (s < 0)
 		error("syntax error: address range out of bounds");
 
 	exec_writeflash(filename, s);

@@ -58,12 +58,13 @@ void exec_read(uint32_t start, uint32_t length, const char* filename)
 
 		if ((i & 0xF) == 0)
 		{
-			printf("\r%d bytes (%d Bps)",
+			printf("\r%03d%% complete: %d bytes (%d Bps)",
+				(100*i) / length,
 				i, (i*1000) / gettime());
 			fflush(stdout);
 		}
 	}
-	putchar('\n');
+	printf("\r100\n");
 
 	fclose(fp);
 };
@@ -100,7 +101,7 @@ void exec_readflash(uint32_t start, uint32_t length, const char* filename)
 	for (uint32_t block=0; block<(length/512); block++)
 	{
 	#endif
-	uint32_t block = 0;
+		uint32_t block = 0;
 		uint32_t address = start + block*512;
 		byte previous = 0;
 		for (uint32_t i=0; i<length; i++)
@@ -112,7 +113,8 @@ void exec_readflash(uint32_t start, uint32_t length, const char* filename)
 			if ((i & 0xF) == 0)
 			{
 				uint32_t count = block*512 + i;
-				printf("\r%d bytes (%d Bps)",
+				printf("\r%03d%% complete: %d bytes (%d Bps)",
+					(100*count) / length,
 					count, (count*1000) / gettime());
 				fflush(stdout);
 			}
@@ -120,7 +122,7 @@ void exec_readflash(uint32_t start, uint32_t length, const char* filename)
 	#if 0
 	}
 	#endif
-	putchar('\n');
+	printf("\r100\n");
 
 	fclose(fp);
 };
@@ -137,9 +139,9 @@ void cmd_readflash(char** argv)
 	int64_t s = strtoll(start, NULL, 0);
 	int64_t l = strtoll(length, NULL, 0);
 	if (l & 0x1FF)
-		error("length must be a multipl eof 512");
+		error("length must be a multiple of 512");
 
-	if ((s < 0) || (l < 0) || ((s+l) > 0x7FFFFF))
+	if ((s < 0) || (l < 0) || (s+l >= FlashLength))
 		error("syntax error: address range out of bounds");
 
 	exec_readflash(s, l, filename);

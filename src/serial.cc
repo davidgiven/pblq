@@ -44,54 +44,42 @@ static int getbaudrate(int speed)
 	return 0;
 }
 
-void logon()
+static bool pause(int milliseconds)
 {
-	fd = open(SerialPort, O_RDWR | O_NOCTTY | O_NDELAY);
-	if (fd == -1)
-		error("Failed to open serial port.");
+	struct pollfd p;
+	p.fd = fd;
+	p.events = POLLIN;
+	return !!poll(&p, 1, milliseconds);
+}
 
-	/* Set up the serial port. */
-	
-	tcgetattr(fd, &serialterm);
-	serialterm.c_cflag = CS8 | CLOCAL | CREAD;
-	serialterm.c_lflag = 0;
-	serialterm.c_oflag = 0;
-	serialterm.c_iflag = IGNPAR;
+static void synchronise_e2()
+{
+	int i;
 
-	/* Set to the fast rate, and ping it, just to see if anything's there.
-	 * */
-
-	cfsetspeed(&serialterm, getbaudrate(FastBaudRate));
-	int i = tcsetattr(fd, TCSANOW, &serialterm);
-	if (i == -1)
-		error("Failed to set up serial port.");
-
-	Packet p;
-	p.request = PACKET_NOP;
-	p.length = 0;
-	p.write();
-
-	{
-		struct pollfd p;
-		p.fd = fd;
-		p.events = POLLIN;
-		if (poll(&p, 1, 100) == 1)
-			goto readpingpacket;
-	}
+	verbose("Sync using e2 protocol\n");
 
 	/* Set to the slow rate, and do the handshake. */
-	
+
 	cfsetspeed(&serialterm, getbaudrate(SlowBaudRate));
 	i = tcsetattr(fd, TCSANOW, &serialterm);
 	if (i == -1)
 		error("Failed to set up serial port.");
+
+	verbose("Flushing buffers...\n");
+
+	unsigned char c;
+	for (;;)
+	{
+		i = read(fd, &c, 1);
+		if (i != 1)
+			break;
+	}
 
 	printf("Waiting for device reset...\n");
 
 	/* Keep sending 1B characters every tenth of a second until we get the
 	 * 06 response. */
 
-	unsigned char c;
 	do
 	{
 		c = 0x1B;
@@ -99,10 +87,7 @@ void logon()
 		if (i == -1)
 			error("Write error.");
 
-		struct pollfd p;
-		p.fd = fd;
-		p.events = POLLIN;
-		if (poll(&p, 1, 100) == 1)
+		if (pause(100))
 		{
 			do
 			{
@@ -122,21 +107,184 @@ void logon()
 
 	for (;;)
 	{
-		struct pollfd p;
-		p.fd = fd;
-		p.events = POLLIN;
-		if (poll(&p, 1, 300) == 0)
+		if (!pause(300))
 			break;
 
 		do
 		{
+		again:
 			i = read(fd, &c, 1);
+#ifdef SPEW_TRACING
+			printf(" <%02X/%d", c, i);
+#endif
 			if ((i == 1) && (c != 0x06))
-				error("Device failed its handshake --- sent "
-					"%02X when it should have sent 06!",
-					c);
+			{
+				printf("Handshake oddity --- device sent %02X "
+					"when it should have sent 06!\n", c);
+				goto again;
+			}
 		}
 		while (i == 1);
+	}
+}
+
+static void synchronise_e3()
+{
+	int i;
+	struct pollfd p;
+
+	verbose("Sync using e3 protocol\n");
+
+	/* Set to the slow rate. */
+
+	cfsetspeed(&serialterm, getbaudrate(SlowBaudRate));
+	i = tcsetattr(fd, TCSANOW, &serialterm);
+	if (i == -1)
+		error("Failed to set up serial port.");
+
+
+	verbose("Flushing buffers...\n");
+
+	unsigned char c;
+	for (;;)
+	{
+		i = read(fd, &c, 1);
+		if (i != 1)
+			break;
+	}
+
+	printf("Waiting for device reset...\n");
+
+	/* The e3 doesn't seem to respond sanely the way the e2 does; it doesn't
+	 * appear to tell us when the handshake is done. So instead we spam it
+	 * with 0x1b bytes until it stops responding, then send it a GETVERSION
+	 * packet and see whether it responds sensibly.
+	 */
+
+	for (;;)
+	{
+		for (;;)
+		{
+			/* Wait for data; max on 500ms. */
+
+			p.fd = fd;
+			p.events = POLLIN;
+			if (poll(&p, 1, 500) == 0)
+				break;
+
+			/* We got some data. Read it all. */
+
+			for (;;)
+			{
+				int i = read(fd, &c, 1);
+				if (i == 1)
+					continue;
+
+				p.fd = fd;
+				p.events = POLLIN;
+				if (poll(&p, 1, 100) == 0)
+					break;
+			}
+
+			/* Send a 0x1b. */
+
+			c = 0x1b;
+			i = write(fd, &c, 1);
+			if (i == -1)
+				error("Write error.");
+		}
+
+		/* Send the GETVERSION packet. */
+
+		Packet pq;
+		pq.request = PACKET_GETVERSION;
+		pq.length = 0;
+		pq.write();
+
+		p.fd = fd;
+		p.events = POLLIN;
+		if (poll(&p, 1, 200) != 0)
+		{
+			read(fd, &c, 1);
+			if (c == 0x02)
+				break;
+		}
+
+		printf("Handshake failed, retrying\n");
+	}
+
+	/* Consume the rest of the packet. */
+
+	for (;;)
+	{
+		struct pollfd p;
+		p.fd = fd;
+		p.events = POLLIN;
+		if (poll(&p, 1, 100) == 0)
+			break;
+
+		read(fd, &c, 1);
+	}
+}
+
+void logon()
+{
+	Packet p;
+	int i;
+
+	fd = open(SerialPort, O_RDWR | O_NOCTTY | O_NDELAY);
+	if (fd == -1)
+		error("Failed to open serial port.");
+
+	/* Set up the serial port. */
+
+	tcgetattr(fd, &serialterm);
+	serialterm.c_cflag = CS8 | CLOCAL | CREAD;
+	serialterm.c_lflag = 0;
+	serialterm.c_oflag = 0;
+	serialterm.c_iflag = IGNPAR;
+
+	/* If we're retrying the old connection, set up at the fast rate --- we're
+	 * relying on a previous pblq execution having set the device up.
+	 * If this is a new connection, resync. */
+
+	if (RetryConnection)
+	{
+		cfsetspeed(&serialterm, getbaudrate(FastBaudRate));
+		int i = tcsetattr(fd, TCSANOW, &serialterm);
+		if (i == -1)
+			error("Failed to set up serial port.");
+	}
+	else
+	{
+		if (Protocol == 2)
+			synchronise_e2();
+		else
+			synchronise_e3();
+	}
+
+	/* Prod device until it starts responding. */
+
+	verbose("Getting PBL status...\n");
+	for (;;)
+	{
+		p.request = PACKET_GETVERSION;
+		p.length = 0;
+		p.write();
+
+		if (!pause(300))
+			continue;
+
+		/* It replied! */
+
+		p.read();
+		if (MaximumPacketSize == 0)
+			MaximumPacketSize = p.gets(8);
+
+		verbose("PBL V%d.%d build %d; maximum packet size 0x%X bytes\n",
+			p.getb(4), p.getb(5), p.gets(6),
+			p.gets(8));
+		break;
 	}
 
 	/* Change baud rate, if the user wants us to. */
@@ -146,7 +294,7 @@ void logon()
 		verbose("Switching to %d baud...\n", FastBaudRate);
 
 		/* Ask for the new baud rate. */
-		
+
 		p.request = PACKET_SETBAUD;
 		p.length = 4;
 		p.setq(0, FastBaudRate);
@@ -165,44 +313,28 @@ void logon()
 
 		/* Keep sending NOP packets until we get a response. */
 
-		p.request = PACKET_NOP;
+		p.request = PACKET_GETVERSION;
 		p.length = 0;
-		
+
 		for (;;)
 		{
 			p.write();
 
-			struct pollfd p;
-			p.fd = fd;
-			p.events = POLLIN;
-			if (poll(&p, 1, 100) > 0)
+			if (pause(300))
 				break;
 		}
 
-readpingpacket:
 		p.read();
-	}
-
-	/* Read in some crucial information we need (such as the maximum packet
-	 * size), if we need it. */
-	
-	if (MaximumPacketSize == 0)
-	{
-		p.request = PACKET_GETVERSION;
-		p.length = 0;
-		p.write();
-		p.read();
-
-		MaximumPacketSize = p.gets(8);
-		verbose("PBL V%d.%d build %d; maximum packet size 0x%X bytes\n",
-			p.getb(4), p.getb(5), p.gets(6),
-			MaximumPacketSize);
 	}
 }
 
 void sendbyte(byte c)
 {
 	int i;
+
+#ifdef SPEW_TRACING
+	printf("<%02X\n", c);
+#endif
 
 	do
 	{
@@ -240,6 +372,9 @@ byte recvbyte()
 	}
 	while (i != 1);
 
+#ifdef SPEW_TRACING
+	printf(">%02X\n", b);
+#endif
 	return b;
 }
 
@@ -248,7 +383,7 @@ void dodgyterm()
 	printf("Serial terminal starting (CTRL+C to quit)\n");
 
 	/* Set up the serial port in slow mode. */
-	
+
 	fd = open(SerialPort, O_RDWR | O_NOCTTY | O_NDELAY);
 	if (fd == -1)
 		error("Failed to open serial port.");
@@ -260,7 +395,7 @@ void dodgyterm()
 	serialterm.c_iflag = IGNPAR;
 
 	cfsetspeed(&serialterm, getbaudrate(SlowBaudRate));
-	int i = tcsetattr(fd, TCSANOW, &serialterm);
+	int i = tcsetattr(fd, TCSADRAIN, &serialterm);
 	if (i == -1)
 		error("Failed to set up serial port.");
 
@@ -284,7 +419,7 @@ void dodgyterm()
 		p[0].events = POLLIN;
 		p[1].fd = 0;
 		p[1].events = POLLIN;
-		
+
 		poll(p, 2, INT_MAX);
 
 		if (p[0].revents)

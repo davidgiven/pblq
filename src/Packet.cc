@@ -54,11 +54,17 @@ void Packet::write()
 	outb(checksum);
 }
 
-void Packet::read()
+bool Packet::read(bool silent)
 {
 	byte b = inb();
 	if (b != 0x02)
 	{
+		for (;;)
+			(void) inb();
+
+		if (silent)
+			return 0;
+
 		error("Protocol error: incorrect packet prefix "
 			"(got %02X, should be 02)",
 			b);
@@ -74,9 +80,16 @@ void Packet::read()
 
 	b = recvbyte();
 	if (b != checksum)
+	{
+		if (silent)
+			return 0;
+
 		error("Protocol error: checksum mismatch "
 			"(got %02X, should be %02X)",
 			b, checksum);
+	}
+
+	return 1;
 }
 
 void Packet::dump()
@@ -86,7 +99,7 @@ void Packet::dump()
 		printf("%02X ", data[i]);
 	printf("\n");
 };
-	
+
 void Packet::checkresponse(uint16_t r)
 {
 	uint16_t s = gets(0);

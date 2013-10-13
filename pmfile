@@ -1,0 +1,16 @@
+include "c.pm"
+
+default = cxxprogram {
+	CBUILDFLAGS = {PARENT, '-Wall'},
+	CDEFINES = {'VERSION="0.3.pre1"'},
+	
+	cxxfile "src/main.cc",
+	cxxfile "src/utils.cc",
+	cxxfile "src/serial.cc",
+	cxxfile "src/Packet.cc",
+	cxxfile "src/checksum.cc",
+	cxxfile "src/write.cc",
+	cxxfile "src/bless.cc",
+	
+	install = pm.install("pblq")
+}

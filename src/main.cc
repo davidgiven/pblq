@@ -11,7 +11,11 @@ bool Verbose = false;
 const char* SerialPort = "/dev/ttyS0";
 int FastBaudRate = 115200;
 int SlowBaudRate = 9600;
+int Protocol = 2;
 int MaximumPacketSize = 0;
+bool RetryConnection = false;
+uint32_t FlashStartPseudoAddress = 0x80010000;
+uint32_t FlashLength = 0x800000;
 
 static int argc;
 static char** argv;
@@ -25,6 +29,8 @@ static void show_help()
 		"Options:\n"
 		"   -h         Displays this message\n"
 		"   -v         Switch on verbose mode\n"
+		"   -r         Reuse an already existing connection\n"
+		"   -e <model> Set which emailer model to use\n"
 		"   -p <port>  Sets the serial port to use\n"
 		"   -s <rate>  Sets the slow baud rate\n"
 		"   -f <rate>  Sets the fast baud rate\n"
@@ -34,6 +40,8 @@ static void show_help()
 		"   term       Start simple serial terminal\n"
 		"   bless <filename>\n"
 		"              Makes a PBL image bootable\n"
+		"   execute <address>\n"
+		"              Executes an on-device program and enters the terminal\n"
 		"   checksum <startaddress> <length>\n"
 		"              Calculates the checksum of an area of memory\n"
 		"   read <filename> <startaddress> <length>\n"
@@ -56,7 +64,7 @@ static void parse_options()
 	for (;;)
 	{
 		int c = getopt(argc, argv,
-			":hvp:f:s:m:");
+			":hvre:p:f:s:m:");
 		switch (c)
 		{
 			case -1:
@@ -69,6 +77,31 @@ static void parse_options()
 
 			case 'v':
 				Verbose = true;
+				break;
+
+			case 'e':
+				switch (atoi(optarg))
+				{
+					case 2:
+						FlashStartPseudoAddress = 0x80010000;
+						FlashLength = 0x800000;
+						FastBaudRate = 115200;
+						SlowBaudRate = 9600;
+						Protocol = 2;
+						break;
+
+					case 3:
+						FlashStartPseudoAddress = 0x00400000;
+						FlashLength = 0x2000000;
+						FastBaudRate = 115200;
+						SlowBaudRate = 115200;
+						Protocol = 3;
+						break;
+
+					default:
+						error("don't know anything about the emailer e%s!",
+							optarg);
+				}
 				break;
 
 			case 'p':
@@ -87,8 +120,12 @@ static void parse_options()
 				MaximumPacketSize = atoi(optarg);
 				break;
 
+			case 'r':
+				RetryConnection = true;
+				break;
+
 			case ':':
-				error("missing option argment.");
+				error("missing option argument.");
 
 			default:
 				error("try '-h' for a usage summary.");
@@ -105,7 +142,7 @@ int main(int _argc, char* _argv[])
 	const char* cmd = argv[0];
 	if (!cmd)
 		error("nothing to do! Try '-h' for a usage summary.");
-		
+
 	argv++;
 	if (strcmp(cmd, "ping") == 0)
 		logon();
@@ -113,6 +150,11 @@ int main(int _argc, char* _argv[])
 		dodgyterm();
 	else if (strcmp(cmd, "bless") == 0)
 		cmd_bless(argv);
+	else if (strcmp(cmd, "execute") == 0)
+	{
+		logon();
+		cmd_execute(argv);
+	}
 	else if (strcmp(cmd, "checksum") == 0)
 	{
 		logon();

@@ -2,11 +2,11 @@
 #define PACKET_H
 
 enum {
-	PACKET_NOP = 0,
+	PACKET_NOP = 0,          // no longer seems to work on the e3
 	PACKET_UNKNOWN_1,
 	PACKET_GETVERSION,
 	PACKET_CHECKSUM,
-	PACKET_UNKNOWN_4,
+	PACKET_EXECUTE,
 	PACKET_WRITE,
 	PACKET_ERASEFLASH,
 	PACKET_UNKNOWN_7,
@@ -34,11 +34,11 @@ struct Packet
 
 	Packet();
 
-	void read();
+	bool read(bool silent = false);
 	void write();
 	void dump();
 	void checkresponse(uint16_t r);
-	
+
 	byte getb(int offset);
 	int16_t gets(int offset);
 	int32_t getq(int offset);

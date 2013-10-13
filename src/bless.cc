@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <string.h>
 #include "globals.h"
+#include "Packet.h"
 
 static uint16_t checksum(byte* start, uint32_t length)
 {
@@ -49,24 +50,24 @@ void cmd_bless(char** argv)
 	if (data == MAP_FAILED)
 		error("could not load file: %s", strerror(errno));
 
-	/* Calculate the checksum. */
+	/* Patch the header length to be the actual file length. */
 
-	uint32_t headerlength = data[8] |
-		(data[9] << 8) |
-		(data[10] << 16) |
-		(data[11] << 24);
-	verbose("Chunk length is %08X\n", headerlength);
+	data[8] = (length >> 0) & 0xFF;
+	data[9] = (length >> 8) & 0xFF;
+	data[10] = (length >> 16) & 0xFF;
+	data[11] = (length >> 24) & 0xFF;
+	verbose("Chunk length is %08X\n", length);
 
 	/* It's late, and I can't do the maths to ensure the fixup byte is
 	 * correct right now. So we'll brute force it. */
 
 	uint16_t d = 0xFFFF;
-	do 
+	do
 	{
 		d++;
 		data[4] = d;
 		data[5] = d>>8;
-		if (checksum(data, headerlength) == 0)
+		if (checksum(data, length) == 0)
 		{
 			verbose("Fixup word is %04X\n", d);
 			break;
@@ -78,3 +79,25 @@ void cmd_bless(char** argv)
 	close(fd);
 }
 
+void cmd_execute(char** argv)
+{
+	const char* address = argv[0];
+	if (!address || argv[1])
+		error("syntax error: execute <address>");
+
+	int64_t a = strtoll(address, NULL, 0);
+	if ((a < 0) || (a > 0xFFFFFFFF))
+		error("syntax error: address range out of bounds");
+
+	Packet p;
+	p.request = PACKET_EXECUTE;
+	p.length = 4;
+	p.setq(0, a);
+
+	p.write();
+	p.read();
+
+	/* Start up DodgyTerm at the current baud rate. This is a bit hacky. */
+	SlowBaudRate = FastBaudRate;
+	dodgyterm();
+}

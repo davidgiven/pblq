@@ -1,6 +1,8 @@
 #ifndef GLOBALS_H
 #define GLOBALS_H
 
+#define SPEW_TRACING
+
 /* Types. */
 
 typedef uint8_t byte;
@@ -11,11 +13,11 @@ extern bool Verbose;
 extern const char* SerialPort;
 extern int FastBaudRate;
 extern int SlowBaudRate;
+extern int Protocol;
 extern int MaximumPacketSize;
-
-enum {
-	FlashStartPseudoAddress = 0x80010000
-};
+extern bool RetryConnection;
+extern uint32_t FlashStartPseudoAddress;
+extern uint32_t FlashLength;
 
 /* Utilities. */
 
@@ -57,6 +59,7 @@ extern void cmd_writeflash(char** argv);
 /* Image management */
 
 extern void cmd_bless(char** argv);
+extern void cmd_execute(char** argv);
 
 #endif
 
