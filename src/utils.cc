@@ -8,6 +8,18 @@
 
 static struct timeval timezero;
 
+void warning(const char* message, ...)
+{
+	va_list ap;
+	va_start(ap, message);
+
+	fprintf(stderr, "pblq: ");
+	vfprintf(stderr, message, ap);
+	fprintf(stderr, "\n");
+
+	va_end(ap);
+};
+
 void error(const char* message, ...)
 {
 	va_list ap;

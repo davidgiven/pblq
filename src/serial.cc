@@ -86,7 +86,7 @@ void logon()
 	if (i == -1)
 		error("Failed to set up serial port.");
 
-	verbose("Sending preamble...\n");
+	printf("Waiting for device reset...\n");
 
 	/* Keep sending 1B characters every tenth of a second until we get the
 	 * 06 response. */
@@ -206,6 +206,12 @@ void sendbyte(byte c)
 
 	do
 	{
+		struct pollfd p;
+		p.fd = fd;
+		p.events = POLLOUT;
+		if (poll(&p, 1, INT_MAX) == 0)
+			break;
+
 		i = write(fd, &c, 1);
 		if (i == -1)
 			error("I/O error on write: %s",
@@ -237,13 +243,68 @@ byte recvbyte()
 	return b;
 }
 
-void hexdump()
+void dodgyterm()
 {
+	printf("Serial terminal starting (CTRL+C to quit)\n");
+
+	/* Set up the serial port in slow mode. */
+	
+	fd = open(SerialPort, O_RDWR | O_NOCTTY | O_NDELAY);
+	if (fd == -1)
+		error("Failed to open serial port.");
+
+	tcgetattr(fd, &serialterm);
+	serialterm.c_cflag = CS8 | CLOCAL | CREAD;
+	serialterm.c_lflag = 0;
+	serialterm.c_oflag = 0;
+	serialterm.c_iflag = IGNPAR;
+
+	cfsetspeed(&serialterm, getbaudrate(SlowBaudRate));
+	int i = tcsetattr(fd, TCSANOW, &serialterm);
+	if (i == -1)
+		error("Failed to set up serial port.");
+
+	/* Put the console into raw mode. */
+
+	struct termios oldconsole;
+	struct termios console;
+	tcgetattr(0, &oldconsole);
+	console = oldconsole;
+	cfmakeraw(&console);
+	i = tcsetattr(0, TCSANOW, &console);
+	if (i == -1)
+		error("Failed to put console into raw mode.");
+
+	/* Wait for input on either device. */
+
 	for (;;)
 	{
-		byte b = recvbyte();
-		printf("%02X\n", b);
-		fflush(stdout);
+		struct pollfd p[2];
+		p[0].fd = fd;
+		p[0].events = POLLIN;
+		p[1].fd = 0;
+		p[1].events = POLLIN;
+		
+		poll(p, 2, INT_MAX);
+
+		if (p[0].revents)
+		{
+			byte b = recvbyte();
+			write(0, &b, 1);
+		}
+
+		if (p[1].revents)
+		{
+			byte b;
+			read(0, &b, 1);
+			if (b == 3)
+				break;
+			sendbyte(b);
+		}
 	}
+
+	/* Put the console back the way it was. */
+
+	tcsetattr(0, TCSANOW, &oldconsole);
 }
 

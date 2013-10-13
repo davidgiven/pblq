@@ -6,6 +6,8 @@
 #include "globals.h"
 #include "Packet.h"
 
+/* --- Basic checksum ---------------------------------------------------- */
+
 uint32_t exec_checksum(uint32_t start, uint32_t length)
 {
 	Packet p;
@@ -39,6 +41,8 @@ void cmd_checksum(char** argv)
 
 	printf("%08X\n", exec_checksum(s, l));
 };
+
+/* --- Read RAM ---------------------------------------------------------- */
 
 void exec_read(uint32_t start, uint32_t length, const char* filename)
 {
@@ -79,5 +83,65 @@ void cmd_read(char** argv)
 		error("syntax error: address range out of bounds");
 
 	exec_read(s, l, filename);
+};
+
+/* --- Read NAND flash --------------------------------------------------- */
+
+void exec_readflash(uint32_t start, uint32_t length, const char* filename)
+{
+	FILE* fp = fopen(filename, "wb");
+	if (!fp)
+		error("Could not open output file: %s", strerror(errno));
+
+	start += FlashStartPseudoAddress;
+
+	resettimer();
+	#if 0
+	for (uint32_t block=0; block<(length/512); block++)
+	{
+	#endif
+	uint32_t block = 0;
+		uint32_t address = start + block*512;
+		byte previous = 0;
+		for (uint32_t i=0; i<length; i++)
+		{
+			byte b = exec_checksum(address, i+1);
+			fputc(b-previous, fp);
+			previous = b;
+
+			if ((i & 0xF) == 0)
+			{
+				uint32_t count = block*512 + i;
+				printf("\r%d bytes (%d Bps)",
+					count, (count*1000) / gettime());
+				fflush(stdout);
+			}
+		}
+	#if 0
+	}
+	#endif
+	putchar('\n');
+
+	fclose(fp);
+};
+
+void cmd_readflash(char** argv)
+{
+	const char* filename = argv[0];
+	const char* start = filename ? argv[1] : NULL;
+	const char* length = start ? argv[2] : NULL;
+
+	if (!filename || !start || !length || argv[3])
+		error("syntax error: readflash <filename> <start> <length>");
+
+	int64_t s = strtoll(start, NULL, 0);
+	int64_t l = strtoll(length, NULL, 0);
+	if (l & 0x1FF)
+		error("length must be a multipl eof 512");
+
+	if ((s < 0) || (l < 0) || ((s+l) > 0x7FFFFF))
+		error("syntax error: address range out of bounds");
+
+	exec_readflash(s, l, filename);
 };
 

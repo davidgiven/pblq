@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "globals.h"
@@ -18,14 +19,6 @@ static void outs(int16_t s)
 	outb((s>>8) & 0xFF);
 }
 
-static void outq(int32_t q)
-{
-	outb((q>> 0) & 0xFF);
-	outb((q>> 8) & 0xFF);
-	outb((q>>16) & 0xFF);
-	outb((q>>24) & 0xFF);
-}
-
 static byte inb()
 {
 	byte b = recvbyte();
@@ -39,12 +32,11 @@ static int16_t ins()
 		| (inb() << 8));
 }
 
-static int32_t inq()
+Packet::Packet()
 {
-	return (inb()
-		| (inb() << 8)
-		| (inb() << 16)
-		| (inb() << 24));
+	length = 0;
+	request = 0;
+	compressed = false;
 }
 
 void Packet::write()
@@ -66,9 +58,11 @@ void Packet::read()
 {
 	byte b = inb();
 	if (b != 0x02)
+	{
 		error("Protocol error: incorrect packet prefix "
 			"(got %02X, should be 02)",
 			b);
+	}
 
 	compressed = inb();
 
@@ -83,6 +77,26 @@ void Packet::read()
 		error("Protocol error: checksum mismatch "
 			"(got %02X, should be %02X)",
 			b, checksum);
+}
+
+void Packet::dump()
+{
+	printf("%04X: ", length);
+	for (int i=0; i<length; i++)
+		printf("%02X ", data[i]);
+	printf("\n");
+};
+	
+void Packet::checkresponse(uint16_t r)
+{
+	uint16_t s = gets(0);
+	if (s != r)
+	{
+		printf("\n");
+		dump();
+		error("Protocol error: received response packet %08X, "
+			"but was expecting %08X", s, r);
+	}
 }
 
 byte Packet::getb(int offset)

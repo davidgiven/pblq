@@ -19,7 +19,8 @@ static char** argv;
 static void show_help()
 {
 	printf(
-		"pblq: Amstrad PBL boot load client.\n"
+		"pblq: Amstrad PBL boot load client v%s.\n"
+		"(C) 2005 David Given.\n"
 		"Usage: pblq [<options>] <command...>\n"
 		"Options:\n"
 		"   -h         Displays this message\n"
@@ -30,11 +31,23 @@ static void show_help()
 		"   -m <size>  Sets the maximum packet size (0=ask PBL)\n"
 		"Commands:\n"
 		"   ping       Pings the device, testing communication\n"
+		"   term       Start simple serial terminal\n"
+		"   bless <filename>\n"
+		"              Makes a PBL image bootable\n"
 		"   checksum <startaddress> <length>\n"
 		"              Calculates the checksum of an area of memory\n"
 		"   read <filename> <startaddress> <length>\n"
 		"              Reads data from RAM into the specified file\n"
+		"   write <filename> <startaddress>\n"
+		"              Writes data from the specified file into RAM\n"
+		"   readflash <filename> <offset> <length>\n"
+		"              Reads data from the NAND flash (very, very slowly)\n"
+		"   writeflash <filename> <offset>\n"
+		"              Writes data into the NAND flash\n"
 		"Addresses should begin 0x if you want them in hex.\n"
+		"WARNING. Use this program at your own risk. The author accepts no responsibility\n"
+		"    for any damage this program may do to your hardware. You have been warned!\n",
+		VERSION
 	);
 }
 
@@ -93,17 +106,40 @@ int main(int _argc, char* _argv[])
 	if (!cmd)
 		error("nothing to do! Try '-h' for a usage summary.");
 		
-	logon();
-
 	argv++;
 	if (strcmp(cmd, "ping") == 0)
-	{
-		/* The logon's already done this. */
-	}
+		logon();
+	else if (strcmp(cmd, "term") == 0)
+		dodgyterm();
+	else if (strcmp(cmd, "bless") == 0)
+		cmd_bless(argv);
 	else if (strcmp(cmd, "checksum") == 0)
+	{
+		logon();
 		cmd_checksum(argv);
+	}
 	else if (strcmp(cmd, "read") == 0)
+	{
+		logon();
 		cmd_read(argv);
+	}
+	else if (strcmp(cmd, "write") == 0)
+	{
+		logon();
+		cmd_write(argv);
+	}
+	else if (strcmp(cmd, "readflash") == 0)
+	{
+		logon();
+		cmd_readflash(argv);
+	}
+	else if (strcmp(cmd, "writeflash") == 0)
+	{
+		logon();
+		cmd_writeflash(argv);
+	}
+	else
+		error("unrecognised command! Try '-h' for a usage summary.");
 
 	return 0;
 };

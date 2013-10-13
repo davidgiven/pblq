@@ -8,7 +8,7 @@ enum {
 	PACKET_CHECKSUM,
 	PACKET_UNKNOWN_4,
 	PACKET_WRITE,
-	PACKET_UNKNOWN_6,
+	PACKET_ERASEFLASH,
 	PACKET_UNKNOWN_7,
 	PACKET_UNKNOWN_8,
 	PACKET_SETBAUD,
@@ -16,7 +16,7 @@ enum {
 	PACKET_UNKNOWN_11,
 	PACKET_GETMEMINFO,
 	PACKET_UNKNOWN_13,
-	PACKET_UNKNOWN_14,
+	PACKET_WRITEFLASH,
 	PACKET_UNKNOWN_15,
 	PACKET_UNKNOWN_16,
 	PACKET_UNKNOWN_17,
@@ -32,8 +32,12 @@ struct Packet
 	bool compressed;
 	byte data[64*1024];
 
+	Packet();
+
 	void read();
 	void write();
+	void dump();
+	void checkresponse(uint16_t r);
 	
 	byte getb(int offset);
 	int16_t gets(int offset);

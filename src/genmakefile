@@ -1,11 +1,15 @@
 # panopticon main genmakefile.
 
 push
+	adddefine '-DVERSION=\"0.2\"'
+
 	hostccq src/main.cc
 	hostccq src/utils.cc
 	hostccq src/serial.cc
 	hostccq src/Packet.cc
 	hostccq src/checksum.cc
+	hostccq src/write.cc
+	hostccq src/bless.cc
 	hostprogram pblq "$OBJS"
 pop
 

@@ -1,0 +1,44 @@
+                                   PBL V0.2
+                                   ======== 
+                                                                               
+                         Amstrad PBL Boot Loader Client
+
+                             (C) 2005 David Given
+                                dg@cowlark.com
+
+INTRODUCTION.
+============
+
+This program provides an interface to the PBL boot loader that is present on
+the Amstrad E2 and E3 Emailer devices. Its main purpose is to allow the
+built-in firmware of the device to be replaced with custom code.
+
+COMPILATION
+===========
+
+Run the configure script to generate the Makefile:
+
+	./configure
+
+...and then run the Makefile:
+
+	make
+
+pblq was developed on the Linux i386 platform and while it should be portable,
+is not guaranteed to work on other devices --- your mileage may vary. Contact
+the author if you have any problems.
+
+USAGE
+=====
+
+	pblq -h
+
+pblq is not a program that should be used if you don't know what you're doing!
+
+LICENSING
+=========
+
+pblq is licensed under the terms of the GNU General Public License, version 2.
+See the COPYING file for the full text.
+
+
