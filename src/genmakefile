@@ -1,0 +1,11 @@
+# panopticon main genmakefile.
+
+push
+	hostccq src/main.cc
+	hostccq src/utils.cc
+	hostccq src/serial.cc
+	hostccq src/Packet.cc
+	hostccq src/checksum.cc
+	hostprogram pblq "$OBJS"
+pop
+

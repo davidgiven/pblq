@@ -1,0 +1,4 @@
+#!/bin/sh
+echo "Writing Makefile..."
+./gm/genmake > Makefile
+echo "Type 'make' to build."
